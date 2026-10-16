@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weather Forecaster — The Overfitting Game</title>
+<style>
+  :root{
+    --ink:#0d1b2a; --night:#1a2342; --dusk:#3a2f5e; --warm:#7a4a5e; --ember:#b5633f;
+    --gold:#ffcb3d; --goldh:#fff1b8; --red:#e5484d; --green:#3fb950; --cyan:#7fd1ff;
+    --ghost:#86e04f; --panel:#141b2e; --panel2:#1b2742;
+    --line:#2e466b; --text:#e9eef5; --dim:#9fb2c9;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html,body{height:100%}
+  body{
+    background:#060b14; color:var(--text);
+    font-family:"Courier New",ui-monospace,monospace; font-weight:bold; letter-spacing:.5px;
+    display:flex; align-items:flex-start; justify-content:center; padding:16px; image-rendering:pixelated;
+  }
+  .wrap{width:100%; max-width:980px}
+  h1,h2,h3{text-transform:uppercase; line-height:1.15}
+  .frame{border:4px solid var(--gold); background:var(--panel); box-shadow:0 0 0 4px #060b14, 6px 6px 0 0 #000; padding:14px}
+  .row{display:flex; gap:14px; align-items:flex-start}
+  .col{display:flex; flex-direction:column; gap:12px}
+  canvas{display:block; image-rendering:pixelated; background:var(--night); border:4px solid var(--line)}
+  #sky{width:600px; height:420px}
+  .side{flex:1; min-width:290px}
+  .panel{border:4px solid var(--line); background:var(--panel2); padding:12px}
+  .panel h3{color:var(--goldh); font-size:13px; margin-bottom:8px; border-bottom:3px dotted var(--line); padding-bottom:6px}
+  button{
+    font-family:inherit; font-weight:bold; text-transform:uppercase; letter-spacing:1px;
+    color:var(--ink); background:var(--gold); border:none; padding:9px 10px; cursor:pointer; font-size:12px;
+    box-shadow:3px 3px 0 0 #000; transition:transform .03s;
+  }
+  button:active{transform:translate(2px,2px); box-shadow:1px 1px 0 0 #000}
+  button.ghost{background:var(--panel); color:var(--gold); outline:3px solid var(--gold)}
+  button:disabled{opacity:.4; cursor:not-allowed; box-shadow:none}
+  @keyframes lbflash{0%,100%{box-shadow:3px 3px 0 0 #000; transform:scale(1)} 50%{box-shadow:3px 3px 0 0 #000, 0 0 18px 5px rgba(255,203,61,.9); transform:scale(1.07)}}
+  @keyframes cheerpulse{0%,100%{transform:scale(1); opacity:.82} 50%{transform:scale(1.07); opacity:1}}
+  button.hot{animation:lbflash .7s infinite; background:var(--goldh); font-size:16px; padding:12px 16px; outline:3px solid #fff}
+  button.hot:disabled{animation:none}
+  #lbCheer{display:none; color:var(--goldh); font-size:15px; text-align:center; margin-bottom:10px; letter-spacing:1px; text-shadow:2px 2px 0 #000; animation:cheerpulse .7s infinite}
+  .readout{font-size:12px; color:var(--dim); display:flex; justify-content:space-between}
+  .readout b{color:var(--goldh)}
+  /* forecaster pick cards */
+  .fccard{display:flex; gap:10px; align-items:center; border:3px solid var(--line); background:var(--panel); padding:8px; margin:7px 0; cursor:pointer; transition:transform .03s}
+  .fccard:hover{transform:translate(-1px,-1px)}
+  .fccard.sel{background:#1a1403}
+  .fcface{image-rendering:pixelated; background:#0c1322; border:2px solid var(--line); width:52px; height:56px; flex:0 0 auto}
+  .fcname{font-size:12px}
+  .fctag{font-size:10px; letter-spacing:0; text-transform:none; color:var(--goldh)}
+  .fcblurb{font-size:10px; color:var(--dim); letter-spacing:0; text-transform:none; line-height:1.4; margin-top:3px}
+  .legend{display:flex; flex-wrap:wrap; gap:9px; font-size:10px; color:var(--dim); margin-top:8px}
+  .legend span{display:flex; align-items:center; gap:5px}
+  .sw{width:12px; height:12px; display:inline-block; border:2px solid #000}
+  .cheat p{font-size:11px; line-height:1.55; margin:7px 0; color:var(--text); letter-spacing:0; text-transform:none}
+  .cheat .an{color:var(--dim)}
+  .cheat u{text-decoration-color:var(--gold)}
+  /* overlays */
+  .overlay{position:fixed; inset:0; background:rgba(4,8,15,.86); display:none; align-items:center; justify-content:center; padding:18px; z-index:10}
+  .overlay.show{display:flex}
+  .card{max-width:760px; width:100%; max-height:92vh; overflow:auto}
+  .card h2{color:var(--gold); font-size:20px; margin-bottom:4px}
+  .card .sub{color:var(--dim); font-size:12px; margin-bottom:12px; text-transform:uppercase}
+  .card p{font-weight:bold; font-size:13px; line-height:1.5; color:var(--text); margin:8px 0}
+  .card ul.brief{list-style:none; margin:10px 0; padding:0}
+  .card ul.brief li{font-weight:bold; font-size:13px; line-height:1.45; color:var(--text); padding:5px 0 5px 22px; position:relative; text-transform:none; letter-spacing:0}
+  .card ul.brief li:before{content:"▸"; color:var(--gold); position:absolute; left:3px; top:5px}
+  .card ul.brief b{color:var(--goldh)}
+  .stars{font-size:24px; color:var(--gold); letter-spacing:4px; margin:2px 0 10px; text-shadow:2px 2px 0 #000}
+  .mission .mrow{display:flex; gap:14px; align-items:center; margin-bottom:6px}
+  .tip{border-left:5px solid var(--gold); padding:8px 11px; background:#1a1403; font-size:12px; color:var(--goldh); line-height:1.5; margin:12px 0; letter-spacing:0; text-transform:none}
+  /* reveal compare cells */
+  .gut{display:flex; gap:12px; margin:12px 0; flex-wrap:wrap}
+  .gutcell{flex:1; min-width:140px; border:4px solid var(--line); background:var(--panel); padding:12px; text-align:center}
+  .gutcell small{display:block; font-size:10px; color:var(--dim); letter-spacing:1px; text-transform:uppercase}
+  .gutcell b{display:block; font-size:34px; margin-top:4px; line-height:1}
+  .gutcell .cap{display:block; font-size:10px; color:var(--dim); margin-top:6px; letter-spacing:0; text-transform:none; min-height:12px}
+  .badge{border:3px solid var(--line); background:var(--panel); padding:8px 11px; margin:4px 0 2px; font-size:12px; text-transform:none; letter-spacing:0; line-height:1.5}
+  .badge.win{border-color:#2d6a33; color:var(--green)}
+  .badge.lose{border-color:#7a2b2e; color:#f1a7a9}
+  .badge b{color:var(--goldh)}
+  .insight{border:4px solid var(--gold); background:#1a1403; padding:10px; font-size:13px; line-height:1.5; margin:10px 0; text-transform:none; letter-spacing:0}
+  .insight b{color:var(--goldh)}
+  .snapdocs{border:4px solid var(--cyan); background:#0e2233; padding:10px 12px; margin:10px 0; text-transform:none; letter-spacing:0}
+  .snapdocs h4{margin:0 0 6px; color:var(--cyan); font-size:12px; letter-spacing:1px; text-transform:uppercase}
+  .snapdocs ul{list-style:none; margin:0; padding:0}
+  .snapdocs li{font-size:13px; line-height:1.5; color:var(--text); padding:4px 0 4px 20px; position:relative}
+  .snapdocs li:before{content:"▸"; color:var(--cyan); position:absolute; left:3px; top:4px}
+  .snapdocs b{color:#cdeaff}
+  .scorebar{display:flex; gap:14px; font-size:12px; color:var(--dim); margin:8px 0}
+  .scorebar b{color:var(--goldh); font-size:16px}
+  .scoremath{border:3px solid var(--line); background:var(--panel); margin:8px 0 2px}
+  .scoremath table{width:100%; border-collapse:collapse}
+  .scoremath caption{text-align:left; padding:7px 10px 2px; color:var(--goldh); font-size:11px; text-transform:uppercase; letter-spacing:.5px}
+  .scoremath td{padding:4px 10px; font-size:13px; text-transform:none; letter-spacing:0}
+  .scoremath .lbl{color:var(--dim)}
+  .scoremath .calc{text-align:center; color:var(--dim); width:30px}
+  .scoremath .sub{text-align:right; font-weight:bold; width:70px}
+  .scoremath .total td{border-top:3px solid var(--line); padding-top:6px; padding-bottom:7px}
+  .scoremath .total .lbl{color:var(--text); text-transform:uppercase; letter-spacing:.5px}
+  .scoremath .total .sub{color:var(--goldh); font-size:15px}
+  .center{text-align:center}
+  .actions{display:flex; gap:10px; justify-content:center; margin-top:14px; flex-wrap:wrap}
+  .hint{font-size:10px; color:var(--dim); margin-top:6px; letter-spacing:0; text-transform:none}
+  @media(max-width:860px){
+    .row{flex-direction:column}
+    #sky{width:100%; height:auto}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="frame col">
+    <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px">
+      <h1 style="color:var(--gold); font-size:18px">Weather Forecaster<span style="color:var(--text)"> — The Overfitting Game</span></h1>
+      <div class="readout" style="gap:16px">
+        <span id="roundTag">Round 1 / 10</span>
+        <span>Pick: <b id="pickName">—</b></span>
+        <span>Score <b id="score">0</b></span>
+      </div>
+    </div>
+
+    <div class="row">
+      <canvas id="sky" width="600" height="420"></canvas>
+
+      <div class="side col">
+        <div class="panel">
+          <h3>1 · Pick a forecaster <small style="color:var(--dim);font-weight:bold">(for the 3 COMING days)</small></h3>
+          <div id="fcCards"></div>
+        </div>
+
+        <div class="panel">
+          <h3>2 · Lock it in</h3>
+          <button id="lockBtn" style="width:100%; font-size:15px; padding:12px" disabled>🔒 Lock in forecast</button>
+          <button id="seeResBtn" style="width:100%; font-size:15px; padding:12px; margin-top:8px; display:none">📊 See the verdict ▶</button>
+          <div class="hint" id="reviewHint" style="display:none">The 3 coming days are in. Study where each forecaster's dotted projection hit and missed, then click above for the verdict.</div>
+          <div class="hint">Lock in and the 3 coming days' real temperatures arrive to judge your forecaster. No take-backs — that's the risk.</div>
+          <div class="legend">
+            <span><i class="sw" style="background:#fff1b8"></i>Recorded (7 days)</span>
+            <span><i class="sw" style="background:#3fb950"></i>Coming (reality)</span>
+            <span><i class="sw" style="background:#5db0ff"></i>Steve</span>
+            <span><i class="sw" style="background:#ff9f45"></i>Tess</span>
+            <span><i class="sw" style="background:#c98bff"></i>Wiggles</span>
+          </div>
+          <div class="hint">Solid line = fit through the recorded days · dotted = each forecaster's projection for the coming days.</div>
+        </div>
+
+        <div class="panel cheat">
+          <h3>📖 How to read the week</h3>
+          <p>All three fit the <u>7 recorded days</u>, then project forward (dotted) to the <b style="color:var(--green)">3 coming days</b>. Tracing dots you can already see is easy — only the coming days are scored, by <b style="color:var(--goldh)">how many °F off</b> each projection lands. Lower is better.</p>
+          <p class="an"><b style="color:#5db0ff">Scattered, messy dots</b> → a straight line (Steve). Don't chase noise.</p>
+          <p class="an"><b style="color:#ff9f45">One clear bend or trend</b> → Tess follows the real shape.</p>
+          <p class="an"><b style="color:#c98bff">A tight, clearly repeating shape</b> → maybe Wiggles earns it. Rarely — a wiggly curve goes wild the moment it leaves the dots.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TITLE -->
+<div class="overlay show" id="titleOv">
+  <div class="card frame center">
+    <h2>⛅ Weather Forecaster</h2>
+    <div class="sub">A tiny game about Overfitting</div>
+    <p>You run the weather desk. Each round you get <b>7 recorded days</b> of temperatures — a scatter of dots. Three forecasters each fit those same dots, then project ahead to <b style="color:var(--green)">3 coming days</b>:</p>
+    <ul class="brief" style="text-align:left; max-width:560px; margin:10px auto">
+      <li><b style="color:#5db0ff">Straight-Line Steve</b> — one ruler-straight line. Never chases a wobble.</li>
+      <li><b style="color:#ff9f45">Trend-Spotter Tess</b> — bends to follow the real trend, but won't snake after every dot.</li>
+      <li><b style="color:#c98bff">Dr. Wiggles</b> — threads a curve through <i>every single dot</i>. Looks flawless on the past.</li>
+    </ul>
+    <p>Anyone can trace dots they can already see. <b>Your job:</b> pick whose read on the pattern will land closest on the <b>3 coming days nobody has seen yet</b>. Pick the <b>closest</b> forecaster for <b>3 points</b>, the second-closest for <b>1</b>, the furthest-off for <b>0</b>.</p>
+    <div class="actions">
+      <button id="start" style="font-size:15px; padding:12px 22px">Start forecasting ▶</button>
+    </div>
+  </div>
+</div>
+
+<!-- ROUND INTRO -->
+<div class="overlay" id="introOv">
+  <div class="card frame mission" style="text-align:center; padding:40px 28px">
+    <h1 id="introName" style="font-size:48px; line-height:1.1; color:var(--gold); margin:6px 0 28px; letter-spacing:3px">Round</h1>
+    <div class="actions" style="justify-content:center"><button id="introGo">Go ▶</button></div>
+  </div>
+</div>
+
+<!-- RESULTS -->
+<div class="overlay" id="resOv">
+  <div class="card frame">
+    <h2 id="resName">Verdict</h2>
+    <div class="stars" id="stars">☆☆☆</div>
+    <div class="sub" id="resSub"></div>
+
+    <p style="color:var(--dim); margin-top:4px">How far each forecaster's projection landed from the <b style="color:var(--green)">3 real coming days</b> — in °F off, lower is better:</p>
+    <div class="gut" id="fcCompare"></div>
+
+    <div class="badge" id="beatBadge"></div>
+
+    <div class="scorebar">
+      <span>This week: <b id="roundScore">0</b></span>
+      <span>Total: <b id="totalScore">0</b></span>
+    </div>
+
+    <div class="scoremath" id="scoreMath"></div>
+
+    <div class="insight" id="insight"></div>
+
+    <div class="snapdocs" id="snapdocs" style="display:none"></div>
+
+    <div class="actions">
+      <button class="ghost" id="retry">↺ Re-forecast this round</button>
+      <button id="next">Next round ▶</button>
+    </div>
+  </div>
+</div>
+
+<!-- SUMMARY -->
+<div class="overlay" id="sumOv">
+  <div class="card frame">
+    <h2>🏆 Season complete</h2>
+    <div class="sub">How your forecasts held up</div>
+    <div class="scorebar"><span>Final score: <b id="finalScore">0</b></span></div>
+    <div id="sumRecap" style="margin:10px 0"></div>
+    <div class="insight">
+      <b>The whole lesson:</b> be careful of overfitting your explanation to the past. Some of what happened is noise that won't repeat, so a curve that traces every recorded dot — like Dr. Wiggles — can look flawless yet predict the future poorly. Match the forecast to the <i>real</i> pattern: a straight line for messy weeks, a gentle bend for a turning week, and only the busy curve when the shape is genuinely rich and tight.
+    </div>
+    <div class="panel" id="lbPanel" style="margin-top:14px; display:none">
+      <h3>🏆 High Scores</h3>
+      <div id="lbCheer"></div>
+      <div id="lbEntry" class="row" style="gap:8px; align-items:center; margin-bottom:10px">
+        <input id="lbName" type="text" maxlength="12" placeholder="YOUR INITIALS" autocomplete="off"
+          style="flex:1; min-width:120px; font-family:inherit; font-weight:bold; font-size:13px; text-transform:uppercase; letter-spacing:1px; padding:9px 10px; background:var(--panel); color:var(--text); border:3px solid var(--line); outline:none">
+        <button id="lbSubmit">Submit score</button>
+      </div>
+      <div id="lbStatus" class="readout" style="margin-bottom:8px; display:none"></div>
+      <div id="lbList"></div>
+    </div>
+    <div class="actions"><button id="again">Play again ▶</button></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+//////////////////// CONFIG ////////////////////
+const SKY = {w:600, h:420, padL:54, padR:18, padT:28, padB:38};
+const NPAST = 7;              // recorded days: x = 0..6
+const FUT = [7,8,9];         // coming days (extrapolated / revealed after lock)
+const NFUT = FUT.length;
+const XMAX = 9;              // right edge of the timeline
+const REVEAL_MS = 340;        // per-day reveal pace (only 3 coming days)
+const NROUNDS = 7;
+const TESS_SLOPE_CAP = 2.5;   // max °/day Tess may continue her edge trend into the future
+const TESS_CURVE_K = 0.8;     // curvature saturation scale, as a multiple of the week's range
+const TESS_CURVE_FLOOR = 4;   // minimum curvature saturation (°) when the week's range is tiny
+
+// ---- Leaderboard (anon public key only; ship OFF) ----
+const SUPABASE_URL = "https://lvcavhfmbzrjqsmvjebe.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx2Y2F2aGZtYnpyanFzbXZqZWJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE4NDEwOTAsImV4cCI6MjEwNzQxNzA5MH0.GfI7_wUqjMWX9un5mKpeRHPcdYplzLZ1mrgwUq5FKgc";
+const LB_TABLE = "weather_scores";
+const LB_ON = !SUPABASE_URL.includes("YOUR-PROJECT") && !SUPABASE_ANON_KEY.includes("YOUR-ANON");
+
+//////////////////// MATH CORE ////////////////////
+const U=(a,b)=>a+Math.random()*(b-a);
+const pick=arr=>arr[Math.floor(Math.random()*arr.length)];
+function gauss(m,sd){ let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random();
+  return m+sd*Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+function solve(M,b){const n=b.length;const A=M.map((r,i)=>r.concat(b[i]));
+  for(let c=0;c<n;c++){let p=c;for(let r=c+1;r<n;r++)if(Math.abs(A[r][c])>Math.abs(A[p][c]))p=r;
+    [A[c],A[p]]=[A[p],A[c]];const pv=A[c][c];if(Math.abs(pv)<1e-12)continue;
+    for(let r=0;r<n;r++){if(r===c)continue;const f=A[r][c]/pv;for(let k=c;k<=n;k++)A[r][k]-=f*A[c][k];}}
+  return A.map((r,i)=>r[n]/(A[i][i]||1e-12));}
+function polyfit(xs,ys,deg){const xmin=Math.min(...xs),xmax=Math.max(...xs),rng=(xmax-xmin)||1;
+  const nx=xs.map(x=>2*(x-xmin)/rng-1);const m=deg+1;
+  const AtA=Array.from({length:m},()=>Array(m).fill(0)),Aty=Array(m).fill(0);
+  for(let i=0;i<nx.length;i++){const pw=[];let p=1;for(let j=0;j<m;j++){pw.push(p);p*=nx[i];}
+    for(let a=0;a<m;a++){for(let b=0;b<m;b++)AtA[a][b]+=pw[a]*pw[b];Aty[a]+=pw[a]*ys[i];}}
+  return {beta:solve(AtA,Aty),xmin,rng};}
+function ev(fit,x){const nx=2*(x-fit.xmin)/fit.rng-1;let p=1,s=0;
+  for(let j=0;j<fit.beta.length;j++){s+=fit.beta[j]*p;p*=nx;}return s;}
+function r2(ys,pred){const mean=ys.reduce((a,b)=>a+b,0)/ys.length;let sr=0,st=0;
+  for(let i=0;i<ys.length;i++){sr+=(ys[i]-pred[i])**2;st+=(ys[i]-mean)**2;}return st<1e-12?0:1-sr/st;}
+
+//////////////////// FORECASTERS ////////////////////
+const FC = {
+  Steve:   {name:"Straight-Line Steve", tag:"Ruler-straight line", color:"#5db0ff", sprite:"steve", pal:"steve",
+            blurb:"One straight line through the week. Never chases a wobble."},
+  Tess:    {name:"Trend-Spotter Tess", tag:"Follows the real trend", color:"#ff9f45", sprite:"tess", pal:"tess",
+            blurb:"Bends to follow the underlying trend, but won't snake after every dot."},
+  Wiggles: {name:"Dr. Wiggles", tag:"Connects every dot", color:"#c98bff", sprite:"wiggles", pal:"wiggles",
+            blurb:"Threads a curve through every recorded dot. Looks perfect on the past."},
+};
+const FC_ORDER = ["Steve","Tess","Wiggles"];
+const shortName = k => FC[k].name.split(" ").pop();
+
+//////////////////// REGIMES (from wf_sim6.js, locked balance) ////////////////////
+const SNAP_NOISE = {title:"Where this bites at Snapdocs", snap:[
+  "A fraud model tuned to explain every quirk in last month's closings looked flawless in testing, then flagged almost nothing in production.",
+  "It had memorized noise, not signal. The simpler rule generalized better."]};
+const SNAP_MONSOON = {title:"Where this bites at Snapdocs", snap:[
+  "Seasonal closing volume genuinely rises and dips through the year — that rhythm is real signal.",
+  "An over-simple model that ignores it underperforms. Here the answer is <b>more</b> complexity, matched to the real pattern."]};
+
+const REGIMES = [
+ { w:0.20, title:"Steady Week", sub:"A calm, trending week", tag:"Steady trend", icon:["therm","therm"],
+   brief:["Temperatures drift in one steady direction all week.","The 7 recorded dots sit close to a clean line — not much scatter.","Is there any real wiggle here, or just a trend?"],
+   snapTitle:SNAP_NOISE.title, snap:SNAP_NOISE.snap,
+   draw:()=>{ const a=U(48,78), b=U(0.6,1.1)*pick([1,1,-1]);
+     return {f:x=>a+b*x, sd:U(0.8,1.3), tessDeg:3}; } },
+ { w:0.15, title:"Heat Wave", sub:"Hot and noisy", tag:"Noisy heat-wave", icon:["sun","heat"],
+   brief:["A hot week with readings bouncing around a lot.","The dots are scattered — the thermometer is noisy.","Chasing every bounce usually means chasing noise."],
+   snapTitle:SNAP_NOISE.title, snap:SNAP_NOISE.snap,
+   draw:()=>{ const a=U(46,74), b=U(0.6,1.0), c=pick([0,0,0,U(-0.05,0.05)]), x0=U(3,7);
+     return {f:x=>a+b*x+c*(x-x0)**2, sd:U(2.3,3.1), tessDeg:3}; } },
+ { w:0.24, title:"Cold Snap", sub:"The week turns", tag:"Cold snap", icon:["snow","snow"],
+   brief:["Temperatures fall, bottom out, then recover — one clear bend.","A straight line can't follow a turn like this.","The dots are tidy, so you don't need to chase every one."],
+   snapTitle:"Where this bites at Snapdocs", snap:[
+     "Real patterns turn. A rule assuming 'cost always rises with loan size' misses that the biggest loans get hand-reviewed and come in cheaper.",
+     "A model that can't bend misses the turn; one that bends too hard invents turns that aren't there."],
+   draw:()=>{ const vtx=U(3.5,6.5), c=U(0.18,0.30)*pick([-1,-1,1]), base=U(50,80);
+     return {f:x=>base+c*(x-vtx)**2, sd:U(1.1,1.6), tessDeg:2}; } },
+ { w:0.23, title:"Gentle Curve", sub:"A soft, bending week", tag:"Gentle curve", icon:["cloud","cloud"],
+   brief:["Temperatures ease up, round off, then ease back — one soft bend.","The dots are calm and clean; the bend is real, not noise.","A straight line is too stiff; snaking after every dot is too wild."],
+   snapTitle:"Where this bites at Snapdocs", snap:[
+     "Most real relationships bend gently — cost vs. loan size, risk vs. document age — they're neither flat nor jagged.",
+     "A model that follows the gentle shape beats both the rigid line and the jittery over-fitter."],
+   draw:()=>{ const vtx=U(3.5,5.5), c=U(0.20,0.38)*pick([-1,1]), base=U(50,78);
+     return {f:x=>base+c*(x-vtx)**2, sd:U(0.7,1.2), tessDeg:2}; } },
+ { w:0.10, title:"Monsoon", sub:"A week with rhythm", tag:"Monsoon rhythm", icon:["raincloud","raincloud"],
+   brief:["Temperatures rise and dip in a repeating rhythm.","This shape is real — an over-simple line will miss it.","But a wave is hard to call past its edge: don't overreach."],
+   snapTitle:SNAP_MONSOON.title, snap:SNAP_MONSOON.snap,
+   draw:()=>{ const A=U(3,5), w=U(0.45,0.70), ph=U(0,Math.PI*2), base=U(50,80);
+     return {f:x=>base+A*Math.sin(w*x+ph), sd:U(1.0,1.7), tessDeg:3}; } },
+ { w:0.08, title:"Clear Monsoon", sub:"Tight, repeating rhythm", tag:"Clean monsoon", icon:["raincloud","raincloud"],
+   brief:["A strong repeating rhythm with tight, clean readings.","Little scatter and a clear shape — the pattern looks trustworthy.","Even so, projecting a wave forward is a gamble at the edge."],
+   snapTitle:SNAP_MONSOON.title, snap:SNAP_MONSOON.snap,
+   draw:()=>{ const A=U(3.5,5.5), w=U(0.60,0.90), ph=U(0,Math.PI*2), base=U(50,78);
+     return {f:x=>base+A*Math.sin(w*x+ph), sd:U(0.35,0.8), tessDeg:4}; } },
+];
+const WSUM = REGIMES.reduce((a,r)=>a+r.w,0);
+function chooseRegime(){ let r=Math.random()*WSUM, acc=0; for(const g of REGIMES){ acc+=g.w; if(r<=acc) return g; } return REGIMES[REGIMES.length-1]; }
+//////////////////// BOARD ////////////////////
+// Fit the 7 recorded days; each forecaster projects to the 3 coming days.
+//   Steve/Tess : genuine extrapolation, clamped to the visible band.
+//   Wiggles    : his PAST line genuinely threads every dot; his FUTURE is a mock —
+//                it starts at his last recorded dot (his curve threads it exactly) and
+//                follows Tess's trend with an alternating +/- zigzag, so he reads as
+//                "still wiggly," stays on-chart, and usually (not always) lands worse.
+function genBoard(regime){
+  const R=regime.draw();
+  const xs=[], ys=[]; for(let i=0;i<NPAST;i++){ xs.push(i); ys.push(R.f(i)+gauss(0,R.sd)); }
+  const degs={Steve:1, Tess:Math.min(R.tessDeg,NPAST-1), Wiggles:NPAST-1};
+  const fits={}; for(const k in degs) fits[k]=polyfit(xs,ys,degs[k]);
+
+  // the realized truth for the 3 coming days (hidden until reveal; what you're graded on)
+  const futTruth=FUT.map(x=>R.f(x)+gauss(0,R.sd));
+
+  // display band: past dots + coming reality + Steve/Tess genuine projections (Wiggles excluded)
+  const steveFut=FUT.map(x=>ev(fits.Steve,x));
+  // Tess's deg-2 fits extrapolate fine, but her deg-3/4 fits explode past the recorded days
+  // and pin to the chart edge. Tame the FUTURE only: continue her edge trend with a capped
+  // slope, and tanh-limit the curvature so her projection can swing hard but never run
+  // off-chart. Her recorded-range curve (the solid past line) is left genuine.
+  const tEdge=ev(fits.Tess,NPAST-1), tSlope=tEdge-ev(fits.Tess,NPAST-2);
+  const tM=clamp(tSlope,-TESS_SLOPE_CAP,TESS_SLOPE_CAP);
+  const tCurveS=Math.max(TESS_CURVE_FLOOR, TESS_CURVE_K*(Math.max(...ys)-Math.min(...ys)));
+  const tessFut =FUT.map(x=>{ const lin=tEdge+tSlope*(x-(NPAST-1));
+    return tEdge + tM*(x-(NPAST-1)) + tCurveS*Math.tanh((ev(fits.Tess,x)-lin)/tCurveS); });
+  let yMin=Math.min(...ys,...futTruth,...steveFut,...tessFut);
+  let yMax=Math.max(...ys,...futTruth,...steveFut,...tessFut);
+  const padB=Math.max(1.5,(yMax-yMin)*0.12); yMin-=padB; yMax+=padB;
+  const band=yMax-yMin;
+
+  const proj={Steve:steveFut.map(v=>clamp(v,yMin,yMax)),
+              Tess : tessFut.map(v=>clamp(v,yMin,yMax)),
+              Wiggles:[]};
+  // follow Tess's trend, but jitter each coming day by an alternating +/- zigzag so Wiggles
+  // reads as erratic. Random start sign avoids a systematic bias; each day's amplitude is
+  // randomly scaled so the swings vary from day to day instead of a regular sawtooth.
+  const wigS=pick([1,-1]);
+  FUT.forEach((x,i)=>{
+    const amp=Math.max(1.5, 0.15*band*U(0.6,1.8));
+    const zig=wigS*(i%2===0?1:-1)*amp;
+    proj.Wiggles.push(clamp(tessFut[i]+zig, yMin+0.4, yMax-0.4));
+  });
+
+  // grade on the realized coming days: mean absolute error (avg °F off)
+  const mae={};
+  for(const k of FC_ORDER){ let s=0; for(let i=0;i<NFUT;i++) s+=Math.abs(proj[k][i]-futTruth[i]); mae[k]=s/NFUT; }
+  const best=Math.min(mae.Steve,mae.Tess,mae.Wiggles);
+  const bestWho=FC_ORDER.reduce((a,b)=>mae[b]<mae[a]?b:a);
+
+  return {R, regime, xs, ys, fits, futXs:FUT, futTruth, proj, mae, best, bestWho, yMin, yMax, xmax:XMAX};
+}
+
+//////////////////// SPRITES ////////////////////
+const SPR={
+  sun:[
+    "....r....",".r.....r.","...ooo...","..ooooo..","r.ooooo.r","..ooooo..","...ooo...",".r.....r.","....r...."],
+  cloud:[
+    ".....ccc.....","...ccccccc...","..ccccccccc..",".ggcccccccgg.","ggggcccccgggg",".ggggggggggg.","............."],
+  raincloud:[
+    ".....ggg.....","...ggggggg...","..ccccccccc..",".ccccccccccc.","ggggcccccgggg",".ggggggggggg.","..b...b...b..",".b...b...b...","..b...b...b..","............."],
+  snow:[
+    "....b....","..b.b.b..","...bbb...","b.bbbbb.b","..bbbbb..","b.bbbbb.b","...bbb...","..b.b.b..","....b...."],
+  therm:[
+    "..ttt..","..t.t..","..trt..","..trt..","..trt..","..trt..","..trt..",".trrrt.","trrrrrt","trrrrrt","trrrrrt",".trrrt.","..ttt.."],
+  wiggles:[
+    "......H.....H.....H.....","...H..H..H..H..H..H..H..","...H.....H.....H.....H..","..H........HH.........H.","..H.....HHHHHHHH......H.","......HHHHHHHHHHHH......","....HHHHHHHHHHHHHHHH....","..HHHHHHHHHHHHHHHHHHHH..","..HHHHHssssssssssHHHHH..",".hhhhHHsossssssosHHhhhh.",".hhhhHooooossoooooHhhhh.",".hhhhHoLLLossoLLLoHhhhh.",".hhhhooLLLooooLLLoohhhh.","..hhhHoLeeosSoLeeoHhhh..","..hhhHooooosSoooooHhhh..","......SsosssSssoss......","......SssssSSnssss......",".......Sssssnssss.......","........bbbbbbbb........",".........bssssb.........",".......mmtmtmtmmm.......","........mmmmmmmm........","........................",".......cccSccSccc.......",".....ccccccSScccccc.....","....cccccccccccccccc...."],
+  steve:[
+    "........................","..........h.............","..........h.............","..........h.............","........HHhHHHHH........",".......HHHhHHHHHH.......","......HHssssssssHH......","......HHssssssssHH......","......HSSssssssssH......","......hbbbbssbbbbh......","......SSssssssssss......","......SSwewsswewss......","......SsssssSsssss......","......SsssssSsssss......","......Sssssnnsssss......","......Ssssssssssss......",".......Ssssssssss.......",".......Smssssssms.......","........smmmmmms........",".........ssssss.........","........................","........................","........................",".......cccskksccc.......",".....cccccckkcccccc.....","....ccccccckkccccccc...."],
+  tess:[
+    "........................","........................","........................","........HHHHHHHH........",".......HHHHHHHHHH.......","......HHHHHHHHHHHH......",".....HHHHHHHHHHHHHH.....","....HHHHHHHHHHHssHHH....","....HHHsbbssshbbsHHH....","...HHHHbSsbssbssbHHHH...","...hhhHHssssssssHHhhh...","...hhhHHwewsswewHHhhh...","...hhhHHssssSsssHHhhh...","...hhhHHssssSsssHHhhh...","...hhhHHsssnnsssHHhhh...","....hhHSsssssssssHhh....","....hhHSsssssssssHhh....",".......Ssssssssss.......","........mttttttm........","........mmmmmmmm........","........................","........................","........................","......kkkkSkkSkkkk......",".....cccccccccccccc.....","....cccccccccccccccc...."],
+};
+const PAL={
+  sun:{o:"#ffd84d", r:"#f5a623"},
+  heat:{o:"#ff8a3d", r:"#e5484d"},
+  cloud:{c:"#d8e2ee", g:"#aab8c8"},
+  raincloud:{c:"#d8e2ee", g:"#8a97a8", b:"#5aa0d8"},
+  snow:{b:"#bfe3ff"},
+  therm:{t:"#e9eef5", r:"#e5484d"},
+  wiggles:{H:"#eef2f6", h:"#aab4bf", s:"#e3b391", S:"#c4906c", o:"#202830", L:"#86e04f", e:"#0e1f33", b:"#7f8a95", n:"#c4906c", m:"#4a1824", t:"#efe6d4", c:"#d7dee6"},
+  steve:{H:"#6b4a2f", h:"#4a3220", s:"#e8b98f", S:"#c9966a", w:"#f4f7fb", e:"#223047", b:"#4a3220", n:"#c9966a", m:"#9a4b57", t:"#f2ead6", c:"#cfd8e3", k:"#e5484d"},
+  tess:{H:"#7a3b2a", h:"#5a2a1d", s:"#edc19a", S:"#cf9a72", w:"#f4f7fb", e:"#2a2140", b:"#5a2a1d", n:"#cf9a72", m:"#b14a62", t:"#f2ead6", c:"#cfd8e3", k:"#3fb0a0"},
+};
+
+function drawSprite(ctx,grid,colors,x,y,px,flip){
+  for(let r=0;r<grid.length;r++){ const row=grid[r];
+    for(let c=0;c<row.length;c++){ const ch=row[c];
+      if(ch==="."||ch===" ")continue; const col=colors[ch]; if(!col)continue;
+      const cc=flip?(row.length-1-c):c;
+      ctx.fillStyle=col; ctx.fillRect(Math.round(x+cc*px),Math.round(y+r*px),px,px); } }
+}
+function drawBig(idOrEl,grid,pal){
+  const c=typeof idOrEl==="string"?$(idOrEl):idOrEl; const x=c.getContext("2d"); x.imageSmoothingEnabled=false;
+  x.clearRect(0,0,c.width,c.height);
+  const gw=grid[0].length,gh=grid.length;
+  const px=Math.max(2,Math.floor(Math.min((c.width-10)/gw,(c.height-10)/gh)));
+  const ox=Math.floor((c.width-gw*px)/2),oy=Math.floor((c.height-gh*px)/2);
+  drawSprite(x,grid,pal,ox,oy,px,false);
+}
+
+//////////////////// STATE ////////////////////
+const $=id=>document.getElementById(id);
+const sky=$("sky"), g=sky.getContext("2d"); g.imageSmoothingEnabled=false;
+let board=null, roundIdx=0, total=0, history=[], schedule=[];
+let selected=null, phase="idle", revealStart=0, lastResult=null;
+
+//////////////////// DRAW ////////////////////
+const DIV_X = 6.5;   // divider between recorded (≤6) and coming (≥7)
+function wxToPx(x){ return SKY.padL + (x/board.xmax)*(SKY.w-SKY.padL-SKY.padR); }
+function wyToPx(y){ const t=(y-board.yMin)/(board.yMax-board.yMin); return SKY.h-SKY.padB - t*(SKY.h-SKY.padT-SKY.padB); }
+function dot(px,py,r,color){ g.fillStyle=color; g.beginPath(); g.arc(px,py,r,0,Math.PI*2); g.fill(); g.lineWidth=1; g.strokeStyle="#060b14"; g.stroke(); }
+function drawPast(fit,color,width,alpha){
+  g.save(); g.globalAlpha=alpha; g.strokeStyle=color; g.lineWidth=width; g.setLineDash([]); g.beginPath();
+  const steps=90;
+  for(let i=0;i<=steps;i++){ const x=(i/steps)*(NPAST-1); const y=clamp(ev(fit,x),board.yMin,board.yMax);
+    const px=wxToPx(x),py=wyToPx(y); i?g.lineTo(px,py):g.moveTo(px,py); }
+  g.stroke(); g.restore();
+}
+function drawFuture(k,color,width,alpha){
+  const fit=board.fits[k], proj=board.proj[k];
+  g.save(); g.globalAlpha=alpha; g.strokeStyle=color; g.lineWidth=width; g.setLineDash([4,5]);
+  g.beginPath(); g.moveTo(wxToPx(NPAST-1), wyToPx(clamp(ev(fit,NPAST-1),board.yMin,board.yMax)));
+  for(let i=0;i<board.futXs.length;i++) g.lineTo(wxToPx(board.futXs[i]), wyToPx(clamp(proj[i],board.yMin,board.yMax)));
+  g.stroke(); g.setLineDash([]);
+  for(let i=0;i<board.futXs.length;i++){ const qx=wxToPx(board.futXs[i]), qy=wyToPx(clamp(proj[i],board.yMin,board.yMax));
+    g.fillStyle="#0d1b2a"; g.lineWidth=2; g.beginPath(); g.arc(qx,qy,3.2,0,Math.PI*2); g.fill(); g.stroke(); }
+  g.restore();
+}
+function niceStep(raw){ const p=Math.pow(10,Math.floor(Math.log10(raw||1))); const n=(raw||1)/p; const m=n<1.5?1:n<3?2:n<7?5:10; return m*p; }
+function drawAxes(){
+  // numeric temperature ticks + faint gridlines on the y-axis (°F)
+  const lo=board.yMin, hi=board.yMax, step=niceStep((hi-lo)/4);
+  g.font="10px 'Courier New'"; g.textAlign="right"; g.textBaseline="middle";
+  for(let t=Math.ceil(lo/step)*step; t<=hi+1e-6; t+=step){
+    const py=wyToPx(t);
+    g.strokeStyle="rgba(46,70,107,.40)"; g.lineWidth=1; g.setLineDash([]);
+    g.beginPath(); g.moveTo(SKY.padL,py); g.lineTo(SKY.w-SKY.padR,py); g.stroke();
+    g.fillStyle="#9fb2c9"; g.fillText(Math.round(t)+"°", SKY.padL-6, py);
+  }
+  g.textBaseline="alphabetic";
+  // axis lines
+  g.strokeStyle="#2e466b"; g.lineWidth=1; g.setLineDash([]);
+  g.beginPath(); g.moveTo(SKY.padL,SKY.padT); g.lineTo(SKY.padL,SKY.h-SKY.padB); g.lineTo(SKY.w-SKY.padR,SKY.h-SKY.padB); g.stroke();
+  // day ticks
+  g.font="10px 'Courier New'"; g.textAlign="center";
+  for(let d=0;d<=XMAX;d++){ g.fillStyle=d>=NPAST?"#9fd1ef":"#9fb2c9"; g.fillText(String(d+1), wxToPx(d), SKY.h-SKY.padB+15); }
+  g.fillStyle="#9fb2c9"; g.fillText("DAY", SKY.w/2, SKY.h-6);
+  g.save(); g.translate(13,SKY.h/2); g.rotate(-Math.PI/2); g.fillText("TEMPERATURE (°F)",0,0); g.restore();
+}
+function draw(){
+  requestAnimationFrame(draw);
+  const grd=g.createLinearGradient(0,0,0,SKY.h); grd.addColorStop(0,"#1a2342"); grd.addColorStop(1,"#0d1b2a");
+  g.fillStyle=grd; g.fillRect(0,0,SKY.w,SKY.h);
+  if(!board) return;
+  // coming-days region shade
+  const dvx=wxToPx(DIV_X);
+  g.fillStyle="rgba(127,209,255,.06)"; g.fillRect(dvx,SKY.padT,(SKY.w-SKY.padR)-dvx,SKY.h-SKY.padB-SKY.padT);
+  drawAxes();
+  // divider + region labels
+  g.save(); g.strokeStyle="rgba(127,209,255,.45)"; g.lineWidth=1; g.setLineDash([3,4]);
+  g.beginPath(); g.moveTo(dvx,SKY.padT); g.lineTo(dvx,SKY.h-SKY.padB); g.stroke(); g.restore();
+  g.font="9px 'Courier New'"; g.fillStyle="#7f8ba0"; g.textAlign="right"; g.fillText("RECORDED", dvx-5, SKY.padT+9);
+  g.fillStyle="#9fd1ef"; g.textAlign="left"; g.fillText("COMING", dvx+5, SKY.padT+9);
+  g.textAlign="center";
+  // recorded dots (days 1..7)
+  for(let i=0;i<board.xs.length;i++) dot(wxToPx(board.xs[i]),wyToPx(clamp(board.ys[i],board.yMin,board.yMax)),4,"#fff1b8");
+  // forecaster lines: solid through the past, dotted projection into the coming days
+  for(const k of FC_ORDER){
+    const sel=selected===k, dim=selected&&!sel;
+    drawPast(board.fits[k], FC[k].color, sel?3.5:2, dim?0.20:1);
+    drawFuture(k, FC[k].color, sel?2.6:1.8, dim?0.18:0.95);
+  }
+  // coming-days reveal: real temps animate in + red miss-lines to the picked projection
+  if(phase==="reveal"||phase==="done"){
+    const el=performance.now()-revealStart;
+    const n = phase==="done" ? NFUT : Math.min(NFUT, Math.floor(el/REVEAL_MS)+1);
+    for(let i=0;i<n;i++){
+      const px=wxToPx(board.futXs[i]), py=wyToPx(clamp(board.futTruth[i],board.yMin,board.yMax));
+      if(selected){ const fy=wyToPx(clamp(board.proj[selected][i],board.yMin,board.yMax));
+        g.save(); g.strokeStyle="rgba(229,72,77,.6)"; g.lineWidth=1.5; g.setLineDash([2,3]);
+        g.beginPath(); g.moveTo(px,py); g.lineTo(px,fy); g.stroke(); g.restore(); }
+      dot(px,py,4.5,"#3fb950");
+    }
+  }
+}
+
+//////////////////// ROUND LIFECYCLE ////////////////////
+function buildSchedule(){ const s=[REGIMES[0]]; for(let i=1;i<NROUNDS;i++) s.push(chooseRegime()); return s; }
+
+function renderCards(){
+  const host=$("fcCards");
+  host.innerHTML=FC_ORDER.map(k=>{ const f=FC[k];
+    return `<div class="fccard" data-k="${k}">
+      <canvas class="fcface" width="52" height="56"></canvas>
+      <div class="fcinfo">
+        <div class="fcname" style="color:${f.color}">${f.name}</div>
+        <div class="fctag">${f.tag}</div>
+        <div class="fcblurb">${f.blurb}</div>
+      </div></div>`; }).join("");
+  host.querySelectorAll(".fccard").forEach(el=>{
+    const k=el.dataset.k;
+    drawBig(el.querySelector(".fcface"), SPR[FC[k].sprite], PAL[FC[k].pal]);
+    el.onclick=()=>{ if(phase==="pick") pickFc(k); };
+  });
+}
+function pickFc(k){
+  selected=k;
+  $("fcCards").querySelectorAll(".fccard").forEach(el=>{ const on=el.dataset.k===k; el.classList.toggle("sel",on); el.style.borderColor=on?FC[k].color:""; });
+  $("pickName").textContent=FC[k].name;
+  updateLock();
+}
+function updateLock(){ $("lockBtn").disabled=!(selected&&phase==="pick"); }
+
+function startRound(){
+  const regime=schedule[roundIdx];
+  board=genBoard(regime);
+  selected=null; phase="pick"; lastResult=null;
+  renderCards();
+  $("lockBtn").disabled=true; $("lockBtn").style.display="block";
+  hideReviewBtn();
+  $("roundTag").textContent=`Round ${roundIdx+1} / ${NROUNDS}`;
+  $("pickName").textContent="—";
+  $("score").textContent=total;
+  $("introName").textContent=`Round ${roundIdx+1}`;
+  show("introOv");
+}
+function lockIn(){
+  if(!selected||phase!=="pick") return;
+  phase="reveal"; revealStart=performance.now();
+  $("lockBtn").disabled=true;
+}
+
+const deg=v=>`${v.toFixed(1)}°`;
+const MEDALS=["🥇","🥈","🥉"], RANKPTS=[3,1,0];
+function showResults(){
+  hideReviewBtn();
+  const b=board, who=selected;
+  const mine=b.mae[who], best=b.best, bw=b.bestWho;
+  const order=[...FC_ORDER].sort((x,y)=>b.mae[x]-b.mae[y]);   // closest first
+  const myRank=order.indexOf(who);
+  const roundScore=RANKPTS[myRank];
+  total += roundScore; lastResult={roundScore};
+  $("score").textContent=total;
+  history.push({picked:who, bestWho:bw, mine, best, roundScore, myRank});
+
+  $("resName").textContent = myRank===0 ? "Closest call ☀️" : myRank===1 ? "Second closest ⛅" : "Furthest off ⛈";
+  $("stars").textContent = stars(myRank);
+  $("resSub").textContent = `You trusted ${FC[who].name}`;
+
+  $("fcCompare").innerHTML = FC_ORDER.map(k=>{
+    const picked=k===who, isbest=k===bw;
+    const cap = picked ? "◀ your pick" : (isbest ? "closest call" : "&nbsp;");
+    return `<div class="gutcell" style="border-color:${picked?FC[k].color:'var(--line)'}">
+      <small>${shortName(k)}</small>
+      <b style="color:${FC[k].color}">${deg(b.mae[k])}</b>
+      <span class="cap">${cap}</span></div>`; }).join("");
+
+  const bad=$("beatBadge");
+  bad.className="badge "+(myRank===0?"win":myRank===2?"lose":"");
+  bad.innerHTML = myRank===0
+    ? `✅ You picked the closest forecaster — <b>${FC[who].name}</b> landed <b>${deg(mine)}</b> off. Full marks.`
+    : myRank===1
+    ? `⛅ Second closest. <b>${FC[bw].name}</b> was nearer at <b>${deg(best)}</b> off, but your pick held at <b>${deg(mine)}</b>.`
+    : `✗ Furthest off. The closest call was <b>${FC[bw].name}</b> at <b>${deg(best)}</b> off — your pick was <b>${deg(mine)}</b>.`;
+
+  $("roundScore").textContent=roundScore;
+  $("totalScore").textContent=total;
+  $("scoreMath").innerHTML=`<table><caption>How this round scored</caption>`
+    + order.map((k,r)=>`<tr class="${k===who?'total':''}"><td class="lbl">${MEDALS[r]} ${FC[k].name}${k===who?' ◀ your pick':''} — ${deg(b.mae[k])} off</td><td class="calc"></td><td class="sub">${RANKPTS[r]} pt${RANKPTS[r]===1?'':'s'}</td></tr>`).join("")
+    + `</table>`;
+
+  $("insight").innerHTML=makeInsight(b,who,myRank);
+  const sd=$("snapdocs"); sd.style.display="block";
+  sd.innerHTML=`<h4>${b.regime.snapTitle}</h4><ul>${b.regime.snap.map(s=>`<li>${s}</li>`).join("")}</ul>`;
+  $("next").textContent = roundIdx===NROUNDS-1 ? "See final results ▶" : "Next round ▶";
+  show("resOv");
+}
+function makeInsight(b,who,myRank){
+  const mine=b.mae[who], best=b.best, bw=b.bestWho, wig=b.mae.Wiggles;
+  if(who==="Wiggles"){
+    if(bw==="Wiggles") return `The dots had a real, repeating shape with barely any scatter — so threading every one actually paid off. This is the rare round Dr. Wiggles earns his keep, landing just <b>${deg(wig)}</b> off.`;
+    return `Dr. Wiggles traced every recorded dot perfectly, then landed <b>${deg(wig)}</b> off on the 3 days he couldn't see. Fitting the past isn't skill. <b>${FC[bw].name}</b> read the real pattern and came within <b>${deg(best)}</b>.`;
+  }
+  if(myRank===0) return `Good read. <b>${FC[who].name}</b> followed the real pattern and landed <b>${deg(mine)}</b> off without chasing noise. Dr. Wiggles' past-perfect curve was <b>${deg(wig)}</b> off on the unseen days.`;
+  if(bw==="Wiggles") return `<b>Dr. Wiggles</b> read it best this round at <b>${deg(best)}</b> off — the rare rich, tight week where threading every dot actually paid off. ${who==="Steve"?"A straight line was too stiff here.":"Your pick's read didn't fit this round's shape."} Your pick landed <b>${deg(mine)}</b> off.`;
+  return `<b>${FC[bw].name}</b> was the closest call (<b>${deg(best)}</b> off). ${who==="Steve"?"A straight line was too stiff for this round's real shape.":"This round rewarded a different read of the dots."} Dr. Wiggles was <b>${deg(wig)}</b> off — looking great on the past is the trap.`;
+}
+
+function finishSeason(){
+  $("finalScore").textContent=total;
+  $("sumRecap").innerHTML=history.map((h,i)=>{
+    const best = h.picked!==h.bestWho ? ` <span style="color:var(--dim)">(closest: ${shortName(h.bestWho)})</span>` : "";
+    const mark = h.myRank===0?'✅':h.myRank===1?'⛅':'✗';
+    const cls = h.myRank===2?'lose':'win';
+    return `<div class="badge ${cls}" style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+      <span>${mark} Round ${i+1} — picked <b>${shortName(h.picked)}</b>${best}</span>
+      <b style="color:var(--gold)">+${h.roundScore}</b></div>`; }).join("");
+  show("sumOv");
+  lbSubmitted=false; $("lbSubmit").disabled=false; $("lbName").value=""; lbLoad();
+}
+
+function stars(rank){ const n = rank===0?3 : rank===1?1 : 0; return "★".repeat(n)+"☆".repeat(3-n); }
+function hideAll(){ document.querySelectorAll(".overlay").forEach(o=>o.classList.remove("show")); }
+function show(id){ hideAll(); $(id).classList.add("show"); }
+function hideReviewBtn(){ const b=$("seeResBtn"); b.style.display="none"; b.classList.remove("hot"); $("reviewHint").style.display="none"; }
+
+//////////////////// LEADERBOARD (anon public key; LB_ON=false on ship) ////////////////////
+let lbSubmitted=false;
+const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function lbStatus(msg,kind){ const el=$("lbStatus"); if(!msg){el.style.display="none";return;}
+  el.style.display="block"; el.style.color=kind==="err"?"var(--red)":kind==="ok"?"var(--green)":"var(--dim)"; el.textContent=msg; }
+async function lbFetch(){
+  const url=`${SUPABASE_URL}/rest/v1/${LB_TABLE}?select=name,score&order=score.desc&limit=10`;
+  const r=await fetch(url,{headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`}});
+  if(!r.ok) throw new Error("HTTP "+r.status); return r.json();
+}
+function lbRender(rows){
+  if(!rows.length){ $("lbList").innerHTML='<div class="readout" style="color:var(--dim)">No scores yet — be the first.</div>'; return; }
+  $("lbList").innerHTML=rows.map((row,i)=>{
+    const medal=i===0?"🥇":i===1?"🥈":i===2?"🥉":`<span style="color:var(--dim)">${i+1}.</span>`;
+    return `<div class="readout" style="padding:4px 0; border-bottom:1px dotted var(--line); font-size:13px">`
+      +`<span><b style="color:var(--goldh)">${medal}</b> ${esc(row.name)}</span>`
+      +`<b style="color:var(--gold)">${row.score}</b></div>`; }).join("");
+}
+async function lbLoad(){
+  if(!LB_ON){ $("lbPanel").style.display="none"; return; }
+  $("lbPanel").style.display="block"; $("lbEntry").style.display=lbSubmitted?"none":"flex"; lbStatus(null);
+  try{ const rows=await lbFetch(); lbRender(rows); lbHighlight(rows); }
+  catch(e){ $("lbList").innerHTML=""; lbStatus("Couldn't load scores.","err"); lbHighlight([]); }
+}
+function lbHighlight(rows){
+  const btn=$("lbSubmit"), cheer=$("lbCheer");
+  const full=rows.length>=10, lowest=full?Math.min(...rows.map(r=>r.score)):-Infinity;
+  const qualifies=!lbSubmitted && total>0 && total>lowest;
+  if(qualifies){ const rank=rows.filter(r=>r.score>total).length+1;
+    btn.classList.add("hot"); cheer.style.display="block";
+    cheer.textContent = rank===1 ? "🏆 NEW #1 SCORE — add your name!" : `🔥 High score — you're #${rank}! Claim your spot!`;
+  } else { btn.classList.remove("hot"); cheer.style.display="none"; }
+}
+async function lbSubmit(){
+  const name=$("lbName").value.trim();
+  if(!name){ lbStatus("Enter your initials first.","err"); $("lbName").focus(); return; }
+  $("lbSubmit").disabled=true; lbStatus("Saving…");
+  try{
+    const r=await fetch(`${SUPABASE_URL}/rest/v1/${LB_TABLE}`,{method:"POST",
+      headers:{apikey:SUPABASE_ANON_KEY,Authorization:`Bearer ${SUPABASE_ANON_KEY}`,"Content-Type":"application/json",Prefer:"return=minimal"},
+      body:JSON.stringify({name:name.slice(0,12),score:total})});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    lbSubmitted=true; $("lbEntry").style.display="none"; $("lbSubmit").classList.remove("hot"); $("lbCheer").style.display="none";
+    lbStatus("Saved! ⛅","ok"); lbRender(await lbFetch());
+  }catch(e){ $("lbSubmit").disabled=false; lbStatus("Save failed — try again.","err"); }
+}
+
+//////////////////// EVENTS ////////////////////
+$("start").onclick=()=>{ roundIdx=0; total=0; history=[]; schedule=buildSchedule(); startRound(); };
+$("introGo").onclick=()=>hideAll();
+$("lockBtn").onclick=lockIn;
+$("seeResBtn").onclick=()=>{ if(phase==="done") showResults(); };
+$("retry").onclick=()=>{
+  if(lastResult){ total-=lastResult.roundScore; $("score").textContent=total; }
+  board=genBoard(schedule[roundIdx]);
+  selected=null; phase="pick"; lastResult=null;
+  renderCards(); updateLock();
+  $("lockBtn").style.display="block"; hideReviewBtn(); $("pickName").textContent="—";
+  hideAll();
+};
+$("next").onclick=()=>{ if(roundIdx===NROUNDS-1) finishSeason(); else { roundIdx++; startRound(); } };
+$("lbSubmit").onclick=lbSubmit;
+$("lbName").onkeydown=e=>{ if(e.key==="Enter") lbSubmit(); };
+$("again").onclick=()=>{ roundIdx=0; total=0; history=[]; hideAll(); $("titleOv").classList.add("show"); };
+
+document.addEventListener("keydown",e=>{
+  const playing=![...document.querySelectorAll(".overlay")].some(o=>o.classList.contains("show"));
+  if(!playing) return;
+  if(phase==="done"){ if(e.key==="Enter"){ e.preventDefault(); showResults(); } return; }
+  if(phase!=="pick") return;
+  if(e.key==="1") pickFc("Steve");
+  else if(e.key==="2") pickFc("Tess");
+  else if(e.key==="3") pickFc("Wiggles");
+  else if(e.key==="Enter"){ if(!$("lockBtn").disabled){ e.preventDefault(); lockIn(); } }
+});
+
+// reveal finishes -> pause on chart for study, then offer the verdict button
+setInterval(()=>{
+  if(phase==="reveal" && performance.now()-revealStart > NFUT*REVEAL_MS + 600){
+    phase="done";
+    const b=$("seeResBtn"); b.style.display="block"; b.classList.add("hot");
+    $("reviewHint").style.display="block";
+  }
+},60);
+
+//////////////////// BOOT ////////////////////
+draw();
+</script>
+</body>
+</html>
